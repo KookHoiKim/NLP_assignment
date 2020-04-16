@@ -110,7 +110,28 @@ def bucketed_batch_indices(
     """
     
     ### YOUR CODE HERE (~7 lines)
-    batch_indices_list: List[List[int]] = None
+    #batch_indices_list: List[List[int]] = None
+    batch_indices_list = []
+    
+    temp = defaultdict(list) 
+    
+    for i, pair  in enumerate(sentence_length):
+        
+        temp[pair[0] // max_pad_len, pair[1] // max_pad_len].append(i)
+
+    for idx in temp:
+        
+        if(len(temp[idx]) > batch_size):
+            
+            for k in range(len(temp[idx]) // batch_size):
+                batch_indices_list.append(temp[idx][k*batch_size : (k+1)*batch_size])
+
+            if len(temp[idx]) % batch_size:
+                batch_indices_list.append(temp[idx][(k+1)*batch_size: ])
+    
+        else:
+            batch_indices_list.append(list_idx)
+
 
     ### END YOUR CODE
 

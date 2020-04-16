@@ -4,9 +4,9 @@ from itertools import chain
 import random
 
 ### You may import any Python standard libray here, but don't import external libraries such as torchtext, numpy, or nltk.
-
+import pdb
 from collections import defaultdict
-
+from torch.nn.utils.rnn import pad_sequence
 ### END YOUR LIBRARIES
 
 import torch
@@ -56,7 +56,7 @@ def preprocess(
     ### YOUR CODE HERE (~2 lines, this is not a mandatory requirement, but try to make efficent codes)
     #src_sentence: List[int] = None
     #trg_sentence: List[int] = None
-    
+
     src_sentence = [src_word2idx[sen] if sen in src_word2idx.keys() else UNK for sen in
             raw_src_sentence]
     if len(src_sentence) > max_len:
@@ -69,8 +69,7 @@ def preprocess(
     if len(trg_sentence) >= max_len:
         trg_sentence = trg_sentence[:max_len-1]
     trg_sentence.append(EOS)
-    
-    
+
     ### END YOUR CODE
     return src_sentence, trg_sentence
 
@@ -130,7 +129,7 @@ def bucketed_batch_indices(
                 batch_indices_list.append(temp[idx][(k+1)*batch_size: ])
     
         else:
-            batch_indices_list.append(list_idx)
+            batch_indices_list.append(temp[idx])
 
 
     ### END YOUR CODE
@@ -169,11 +168,23 @@ def collate_fn(
     """
     PAD = Language.PAD_TOKEN_IDX
     batch_size = len(batched_samples)
-
+    
     ### YOUR CODE HERE (~4 lines)
-    src_sentences: torch.Tensor = None
-    trg_sentences: torch.Tensor = None
 
+    #src_sentences: torch.Tensor = None
+    #trg_sentences: torch.Tensor = None
+    
+
+    sorted_batch = sorted(batched_samples, key=lambda element: len(element[0]), reverse=True)
+
+    src_torch = [torch.tensor(i[0]) for i in sorted_batch]
+    trg_torch = [torch.tensor(i[1]) for i in sorted_batch]
+    
+    src_sentences = pad_sequence(src_torch, batch_first=True)
+    trg_sentences = pad_sequence(trg_torch, batch_first=True)
+    
+    
+    
     ### END YOUR CODE
     assert src_sentences.shape[0] == batch_size and trg_sentences.shape[0] == batch_size
     assert src_sentences.dtype == torch.long and trg_sentences.dtype == torch.long
@@ -240,7 +251,6 @@ def test_preprocess():
     english = Language(path='data/train.en.txt')
     french.build_vocab()
     english.build_vocab()
-
     # First test
     src_sentence, trg_sentence = preprocess(french[0], english[0], french.word2idx, english.word2idx, max_len=100)
     assert src_sentence == [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] and \

@@ -33,6 +33,9 @@ class Seq2Seq(torch.nn.Module):
         # Note: You should set padding_idx options to embed <PAD> tokens to 0 values 
         self.src_embedding: nn.Embedding = None
         self.trg_embedding: nn.Embedding = None
+        
+        self.src_embedding = nn.Embedding(num_embeddings=SRC_TOKEN_NUM, embedding_dim=embedding_dim)
+        self.trg_embedding = nn.Embedding(num_embeddings=TRG_TOKEN_NUM, embedding_dim=embedding_dim)
 
         ### Declare LSTM/LSTMCell Layers
         # Doc for LSTM Layer: https://pytorch.org/docs/stable/nn.html#lstm
@@ -43,6 +46,11 @@ class Seq2Seq(torch.nn.Module):
         # Note 2: Use one layer LSTM with bias for encoder & decoder
         self.encoder: nn.LSTM = None
         self.decoder: nn.LSTMCell = None
+        
+        self.encoder = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, biderectional=True,
+                batch_first=True)
+        self.decoder = nn.LSTMCell(input_size=embedding_dim, hidden_size=hidden_dim,
+                batch_first=True)
 
         # Attention Layer
         if attention_type == 'dot':
@@ -58,6 +66,11 @@ class Seq2Seq(torch.nn.Module):
         #
         # Note: Shape of combined-output o_t should be (batch_size, TRG_TOKEN_NUM - 1) because we will exclude the probability of <PAD>
         self.output: nn.Sequential = None
+        self.output = nn.Sequential(
+                        nn.Linear(4*hidden_dim, hidden_dim),
+                        nn.Tanh(),
+                        nn.Linear(hidden_dim, TRG_TOKEN_NUM - 1)
+                        )
 
         ### END YOUR CODE
 

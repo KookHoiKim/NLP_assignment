@@ -6,7 +6,9 @@ import torch.nn as nn
 from attention import AttentionBase, DotAttention, ConcatAttention
 
 ### You may import any Python standard libray or pyTorch sub-directory here.
-
+import pdb
+import torch.nn.functional as F
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 ### END YOUR LIBRARIES
 
 from dataset import Language, NmtDataset, collate_fn
@@ -26,16 +28,17 @@ class Seq2Seq(torch.nn.Module):
         PAD = Language.PAD_TOKEN_IDX
         SRC_TOKEN_NUM = len(src.idx2word) # Including <PAD>
         TRG_TOKEN_NUM = len(trg.idx2word) # Including <PAD>
-
         ### Declare Embedding Layers
         # Doc for Embedding Layer: https://pytorch.org/docs/stable/nn.html#embedding 
         #
         # Note: You should set padding_idx options to embed <PAD> tokens to 0 values 
         self.src_embedding: nn.Embedding = None
         self.trg_embedding: nn.Embedding = None
-        
-        self.src_embedding = nn.Embedding(num_embeddings=SRC_TOKEN_NUM, embedding_dim=embedding_dim)
-        self.trg_embedding = nn.Embedding(num_embeddings=TRG_TOKEN_NUM, embedding_dim=embedding_dim)
+
+        self.src_embedding = nn.Embedding(num_embeddings=SRC_TOKEN_NUM, embedding_dim=embedding_dim,
+                padding_idx=PAD)
+        self.trg_embedding = nn.Embedding(num_embeddings=TRG_TOKEN_NUM, embedding_dim=embedding_dim,
+                padding_idx=PAD)
 
         ### Declare LSTM/LSTMCell Layers
         # Doc for LSTM Layer: https://pytorch.org/docs/stable/nn.html#lstm
@@ -47,10 +50,9 @@ class Seq2Seq(torch.nn.Module):
         self.encoder: nn.LSTM = None
         self.decoder: nn.LSTMCell = None
         
-        self.encoder = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, biderectional=True,
+        self.encoder = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, bidirectional=True,
                 batch_first=True)
-        self.decoder = nn.LSTMCell(input_size=embedding_dim, hidden_size=hidden_dim,
-                batch_first=True)
+        self.decoder = nn.LSTMCell(input_size=embedding_dim, hidden_size=embedding_dim)
 
         # Attention Layer
         if attention_type == 'dot':
@@ -65,13 +67,12 @@ class Seq2Seq(torch.nn.Module):
         # Doc for Tanh Layer: https://pytorch.org/docs/stable/nn.html#tanh 
         #
         # Note: Shape of combined-output o_t should be (batch_size, TRG_TOKEN_NUM - 1) because we will exclude the probability of <PAD>
-        self.output: nn.Sequential = None
+        #self.output: nn.Sequential = None
         self.output = nn.Sequential(
-                        nn.Linear(4*hidden_dim, hidden_dim),
+                        nn.Linear(4*hidden_dim, hidden_dim, bias=False),
                         nn.Tanh(),
-                        nn.Linear(hidden_dim, TRG_TOKEN_NUM - 1)
+                        nn.Linear(hidden_dim, TRG_TOKEN_NUM - 1, bias=False)
                         )
-
         ### END YOUR CODE
 
     def forward(self, src_sentences: torch.Tensor, trg_sentences: torch.Tensor, teacher_force: float=.5):
@@ -115,21 +116,46 @@ class Seq2Seq(torch.nn.Module):
         hidden_state: torch.Tensor = None
         cell_state: torch.Tensor = None
 
-        ### END YOUR CODE
+        
+        src = self.src_embedding(src_sentences)
 
+        src_lengths = torch.LongTensor([torch.max(src_sentences[i,:].data.nonzero())+1 for i in range(src_sentences.size(0))])
+        
+        packed_src_input = pack_padded_sequence(src, src_lengths.tolist(), batch_first=True)
+
+        packed_output, (hidden, cell) = self.encoder(packed_src_input)
+        
+        encoder_hidden, _ = pad_packed_sequence(packed_output, batch_first=True)
+        
+        hidden_state = torch.cat([hidden[0], hidden[1]], dim=1)
+        cell_state = torch.cat([cell[0], cell[1]], dim=1)
+        decoder_state = (hidden_state,cell_state)
+        
+        # The reason ignore index is -1 is that we will change all index - 1 and PAD index also
+        # become '-1' because output exclude PAD , TRG_TOKEN_NUM -1 but index variables are not
+        # applied.
+        criterion = nn.CrossEntropyLoss(reduction='sum', ignore_index=PAD-1)
+
+         
+        '''
+        encoder_hidden, (hidden, cell) = self.encoder(src)
+         
+        #changn pad_packed later
+        encoder_hidden.data.masked_fill_(encoder_masks.unsqueeze(2).expand(8, 16, 128), 0)
+
+        hidden_state = torch.cat([hidden[0], hidden[1]], dim=1)
+        cell_state = torch.cat([cell[0], cell[1]], dim=1)
+        decoder_state = (hidden_state, cell_state)
+        '''
+
+
+        ### END YOUR CODE
+        
         # Loss initialize
         loss = encoder_hidden.new_zeros(())
 
         decoder_out = trg_sentences.new_full([batch_size], fill_value=SOS)
         for trg_word_idx in range(trg_sentences.shape[1] - 1):
-            # Teacher forcing: feed correct labels with a probability of teacher_force
-            decoder_input = trg_sentences[:, trg_word_idx] if torch.distributions.bernoulli.Bernoulli(teacher_force).sample() else decoder_out
-
-            # You may use below notations
-            decoder_target = trg_sentences[:, trg_word_idx+1]
-            decoder_mask = trg_sentences[:, trg_word_idx+1] == PAD
-
-            ### Decoder part (~8 lines)
             # Calculate loss for each word in a batch
             #
             # Note 1: the probability of <PAD> should be zero as we did in Assignment 1. 
@@ -147,9 +173,42 @@ class Seq2Seq(torch.nn.Module):
             #           You should aggregate whole losses of non-<PAD> tokens in a batch
             # decoder_out -- word indices which have largest probability for next words
             #           in shape (batch_size, )
+            # Teacher forcing: feed correct labels with a probability of teacher_force
+            decoder_input = trg_sentences[:, trg_word_idx] if torch.distributions.bernoulli.Bernoulli(teacher_force).sample() else decoder_out
+
+            # You may use below notations
+            decoder_target = trg_sentences[:, trg_word_idx+1]
+            decoder_mask = trg_sentences[:, trg_word_idx+1] == PAD
+            
+            ### Decoder part (~8 lines)
             loss: torch.Tensor = loss
             decoder_out: torch.Tensor = None
+            
+            
+            #pdb.set_trace()
+            trg = self.trg_embedding(decoder_input)
 
+            decoder_state = self.decoder(trg, decoder_state)
+
+            decoder_state[0].data.masked_fill_(decoder_mask.unsqueeze(1).expand(decoder_state[0].shape[0],
+                                                                                decoder_state[0].shape[1]), 0)
+
+            attention_output, distribution = self.attention(encoder_hidden, encoder_masks,
+                                                            decoder_state[0], decoder_mask)
+            
+            ut = torch.cat([decoder_state[0], attention_output], dim=1)
+           
+            ot = self.output(ut)
+            
+            # I made criterion = nn.CrossEntropyLoss(reduction='sum', ignore_index=PAD-1) upper part,
+            # because it doesn't have to be declared every loop.
+            # Also because 'ot' doesn't include PAD layer, we have to subtract 1 from all index.
+            losses = criterion(ot, decoder_target-1)
+            loss += losses
+            
+            # Also, we have to add 1 to all index because we will subtract index at the next loop
+            decoder_out = torch.argmax(ot, dim=1) + 1
+             
             ### END YOUR CODE
 
         assert loss.shape == torch.Size([])
@@ -181,6 +240,8 @@ class Seq2Seq(torch.nn.Module):
         # Note: use argmax to get the next input word
         translated: torch.Tensor = None
         distributions: torch.Tensor = None
+        
+
 
         ### END YOUR CODE
 
@@ -217,19 +278,20 @@ def test_initializer_and_forward():
     dataloader = torch.utils.data.dataloader.DataLoader(dataset, collate_fn=collate_fn, num_workers=0, batch_sampler=batch_indices)
     batch = next(iter(dataloader))
     loss = model(batch[0], batch[1])
-
+    #pdb.set_trace()
+    
     # the second test
-    assert loss.detach().allclose(torch.tensor(3.03703070)), \
+    assert loss.detach().allclose(torch.tensor(3.03703070), atol=1e-7), \
         "Loss of the model does not match expected result."
     print("The second test passed!")
 
     loss.backward()
-
+    
     # the third test
     expected_grad = torch.Tensor([[-8.29117271e-05, -4.44278521e-05, -2.64967621e-05],
                                   [-3.89243884e-04, -1.29778590e-03, -4.56827343e-04],
                                   [-2.76966626e-03, -1.00148167e-03, -6.68873254e-05]])
-    assert model.encoder.weight_ih_l0.grad[:3,:3].allclose(expected_grad), \
+    assert model.encoder.weight_ih_l0.grad[:3,:3].allclose(expected_grad, atol=1e-7), \
         "Gradient of the model does not match expected result."
     print("The third test passed!")
 

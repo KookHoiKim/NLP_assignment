@@ -3,6 +3,7 @@ from typing import List, Dict, Tuple, Set
 import random
 
 ### You may import any Python standard library here.
+import pdb
 import torch.nn as nn
 import torch.nn.functional as F
 ### END YOUR LIBRARIE
@@ -68,11 +69,11 @@ def naive_softmax_loss(
     result = Uv.new_zeros((batch_size, n_tokens), dtype=Uv.dtype, requires_grad=True)
     result[:, 1:] = Uv
     #result = nn.ConstantPad2d((1, 0, 0, 0), 0)(Uv)
-    
+    pdb.set_trace()
     # losses : [batch size]
     # using gather function, we can choose pre-calculated elements by outside word indices.
     losses = torch.gather(result, 1, outside_word_indices).sum(dim=1)
-   
+     
     ### END YOUR CODE
     assert losses.shape == torch.Size([batch_size])
     return losses

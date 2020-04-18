@@ -73,20 +73,12 @@ class DotAttention(AttentionBase):
         
         #pdb.set_trace()
 
-        #decoder_hidden = decoder_hidden.unsqueeze(2)
-        mul = torch.bmm(encoder_hidden, decoder_hidden.unsqueeze(2)).squeeze()
+        attn_score = torch.matmul(encoder_hidden, decoder_hidden.unsqueeze(2)).squeeze()
 
-        mul.data.masked_fill_(encoder_mask, float('-inf'))
+        attn_score.data.masked_fill_(encoder_mask, float('-inf'))
         
-        distribution = F.softmax(mul, dim=1).unsqueeze(2)
-        attentioned_encoder = distribution * encoder_hidden
-        attentioned_encoder_hidden = torch.sum(attentioned_encoder, dim=1)
-       
-        distribution = distribution.squeeze()
-        attention = attentioned_encoder_hidden
-
-
-
+        distribution = F.softmax(attn_score, dim=1).squeeze()
+        attention = torch.sum(distribution.unsqueeze(2) * encoder_hidden, dim=1)
 
         ### END YOUR CODE
 
@@ -146,32 +138,17 @@ class ConcatAttention(AttentionBase):
         
         #pdb.set_trace()
         
-        #encoder_hidden.data.masked_fill_(encoder_mask.byte(), float('-inf'))
         concat_enc_dec = torch.cat((encoder_hidden, decoder_hidden.unsqueeze(1).\
                                     expand(batch_size, sequence_length, hidden_dim)),dim=2) 
         Cti = torch.tanh(torch.matmul(concat_enc_dec, self.W_a.T))
-        #Cti[torch.isnan(Cti)] = float('-inf')
+
         eti = torch.matmul(Cti, self.v_a.view(-1, 1))
-        #eti[torch.isnan(eti)] = float('-inf')
             
         eti.squeeze().data.masked_fill_(encoder_mask, float('-inf'))
 
         distribution = F.softmax(eti, dim=1).squeeze()
-        
-        #encoder_hidden.data.masked_fill_(encoder_mask.unsqueeze(2).expand(encoder_hidden.shape), 0.)
 
-
-        temp = distribution.unsqueeze(2) * encoder_hidden
-        #temp = distribution.unsqueeze(2) * tmp_enc_hidden
-
-        #attention = torch.sum(distribution.unsqueeze(2) * encoder_hidden, dim=1) 
-        attention = torch.sum(temp, dim=1)
-        #attention[torch.isnan(attention)] = 0.
-        
-        #ut = torch.cat((decoder_hidden, at), dim=1)
-
-       
-
+        attention = torch.sum(distribution.unsqueeze(2) * encoder_hidden, dim=1)
 
         ### END YOUR CODE
 

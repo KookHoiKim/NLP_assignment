@@ -11,12 +11,13 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
+import pdb
 ### You can edit this file by yourself, and it doesn't affect your final score.
 ### You may change batch_size, embedding_dim, the number of epoch, and all other variable.
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # device = torch.device('cpu')
-
+#pdb.set_trace()
 attention_type = 'dot' # 'dot' or 'concat'
 embedding_dim = 128
 hidden_dim = 64
@@ -79,6 +80,7 @@ def translate():
     english_train.build_vocab()
     model = Seq2Seq(french_train, english_train, attention_type=attention_type,
                     embedding_dim=embedding_dim, hidden_dim=hidden_dim).to(device)
+    #pdb.set_trace()
     model.load_state_dict(torch.load("seq2seq_" + attention_type + ".pth", map_location=device))
 
     french_test = Language(path='data/test.fr.txt')
@@ -96,6 +98,7 @@ def translate():
         plot_attention(attention.cpu().detach(), translated_text, source_text, name=attention_type + '_' + str(i))
 
     f = open('translated.txt', mode='w', encoding='utf-8')
+    #pdb.set_trace()
     f_bleu = open('pred.en.txt', mode='w', encoding='utf-8')
     for french, english in tqdm(dataset, desc='Translated'):
         translated, attention = model.translate(torch.Tensor(french).to(dtype=torch.long, device=device))
@@ -114,5 +117,8 @@ if __name__ == "__main__":
     torch.set_printoptions(precision=8)
     random.seed(4321)
     torch.manual_seed(4321)
+    #translate()
     train()
+    #attention_type = 'concat'
+    #train()
     translate()

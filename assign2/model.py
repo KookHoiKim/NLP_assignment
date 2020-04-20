@@ -240,7 +240,46 @@ class Seq2Seq(torch.nn.Module):
         # Note: use argmax to get the next input word
         translated: torch.Tensor = None
         distributions: torch.Tensor = None
+        #pdb.set_trace() 
         
+        src = self.src_embedding(sentence)
+        encoder_hidden, (hidden, cell) = self.encoder(src.view(1, sentence_length, -1))
+        hidden = torch.cat([hidden[0], hidden[1]], dim=1)
+        cell = torch.cat([cell[0], cell[1]], dim=1)
+        
+        decoder_state = (hidden, cell)
+        
+        #translated = torch.LongTensor(device=sentence.device)
+        #translated = sentence.new_zeros(()).view(1)
+        #distributions = []
+        #decoder_input = torch.LongTensor([SOS])
+        decoder_input = sentence.new_full(size=[1], fill_value=SOS, device=sentence.device)
+        #decoder_input = src.new_full([1], fill_value=SOS)
+        for i in range(max_len):
+            #pdb.set_trace()
+            decoder_state = self.decoder(self.trg_embedding(decoder_input.view(1)), decoder_state)
+            attention_output, distribution = self.attention(encoder_hidden, 
+                    torch.tensor(False, device=src.device), decoder_state[0], torch.tensor(False, device=src.device))
+            
+            ut = torch.cat([decoder_state[0], attention_output], dim=1)
+            ot = self.output(ut)
+
+            decoder_input = torch.argmax(ot) + 1
+            #translated = torch.cat([translated, decoder_input.view(-1)], dim=0)
+            if i == 0:
+                distributions = distribution.view(1, sentence_length)
+                translated = sentence.new_full(size=[1], fill_value=decoder_input.item(),
+                        device=sentence.device)
+            else:
+                distributions = torch.cat([distributions, distribution.view(1, sentence_length)],
+                        dim = 0)
+                translated = torch.cat([translated, decoder_input.view(-1)], dim=0)
+
+            if decoder_input.item() is EOS:
+                break
+
+
+
 
 
         ### END YOUR CODE
@@ -309,7 +348,7 @@ def test_translation():
 
     sentence = torch.Tensor([ 4,  6, 40, 41, 42, 43, 44, 13]).to(torch.long)
     translated, distributions = model.translate(sentence)
-
+    #pdb.set_trace()
     # the first test
     assert translated.tolist() == [4, 16, 9, 56, 114, 51, 1, 14, 3], \
         "Your translation does not math expected result."

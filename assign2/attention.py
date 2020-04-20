@@ -70,14 +70,13 @@ class DotAttention(AttentionBase):
         ### YOUR CODE HERE (~5 lines)
         attention: torch.Tensor = None
         distribution: torch.Tensor = None
-        
-        #pdb.set_trace()
 
-        attn_score = torch.matmul(encoder_hidden, decoder_hidden.unsqueeze(2)).squeeze()
+        attn_score = torch.matmul(encoder_hidden, decoder_hidden.unsqueeze(2)).view(batch_size,
+                sequence_length)
 
         attn_score.data.masked_fill_(encoder_mask, float('-inf'))
         
-        distribution = F.softmax(attn_score, dim=1).squeeze()
+        distribution = F.softmax(attn_score, dim=1).view(batch_size, sequence_length)
         attention = torch.sum(distribution.unsqueeze(2) * encoder_hidden, dim=1)
 
         ### END YOUR CODE
@@ -142,11 +141,11 @@ class ConcatAttention(AttentionBase):
                                     expand(batch_size, sequence_length, hidden_dim)),dim=2) 
         Cti = torch.tanh(torch.matmul(concat_enc_dec, self.W_a.T))
 
-        eti = torch.matmul(Cti, self.v_a.view(-1, 1))
+        eti = torch.matmul(Cti, self.v_a.view(-1, 1)).view(batch_size, sequence_length)
             
-        eti.squeeze().data.masked_fill_(encoder_mask, float('-inf'))
+        eti.data.masked_fill_(encoder_mask, float('-inf'))
 
-        distribution = F.softmax(eti, dim=1).squeeze()
+        distribution = F.softmax(eti, dim=1).view(batch_size, sequence_length)
 
         attention = torch.sum(distribution.unsqueeze(2) * encoder_hidden, dim=1)
 

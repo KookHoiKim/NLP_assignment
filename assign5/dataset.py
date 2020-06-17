@@ -3,13 +3,50 @@ from multiprocessing import Process
 import json
 
 ### YOUR LIBRARIES HERE
-
+from tqdm import tqdm
+import unicodedata
+from pdb import set_trace
 ### END YOUR LIBRARIES
 
 from transformers import BertTokenizerFast
 from tqdm import trange
 
 ### You may implment your own classes HERE
+class SquadPreprocessor():
+    
+    def __init__(self, filedir):
+
+        with open(filedir) as reader:
+            self.input_data = json.load(reader)["data"]
+    
+    def get_data(self):
+
+        return self.create_data_list(self.input_data)
+
+    def create_data_list(self, input_data):
+
+        data_list = []
+
+        for tmp in tqdm(self.input_data):
+            title = tmp["title"]
+            for par in tmp["paragraphs"]:
+                context = par["context"]
+                for qa in par["qas"]:
+                    qa_id = qa["id"]
+                    question = qa["question"]
+                    answer = qa["answers"][0]["text"]
+                    start_pos = qa["answers"][0]["answer_start"]
+                    data_list.append([qa_id, context, question, answer, start_pos])
+
+        return data_list
+
+def _is_whitespace(char):
+    if char == " " or char == "\t" or char == "\n" or char == "\r":
+        return True
+    cat = unicodedata.category(char)
+    if cat == "Zs":
+        return True
+    return False
 
 ### END YOUR CLASSES
 
@@ -27,8 +64,8 @@ class SquadDataset(object):
         json_file -- the name of the json file which have to be processed.
         """
         ### YOUR CODE HERE
-        pass
-
+        preprocessor = SquadPreprocessor(filedir=json_file)
+        self.data = preprocessor.get_data()
         ### END YOUR CODE
 
     def __len__(self) -> int:
@@ -38,7 +75,7 @@ class SquadDataset(object):
         """
         ### YOUR CODE HERE 
         length: int = None
-
+        length = len(self.data)
         ### END YOUR CODE
 
         return length
@@ -47,7 +84,7 @@ class SquadDataset(object):
         """ Squad Dataset Indexing
         Arguments:
         index -- The index of the question
-                 Each question should have a unique index number in the order.
+        Each question should have a unique index number in the order.
 
         Return:
         id_str -- The id of the question, which is saved in the json file.
@@ -66,7 +103,16 @@ class SquadDataset(object):
         question: str = None
         answer: str = None
         start_pos: int = None
+
+        data_single = self.data[index]
+        id_str = data_single[0]
+        context = data_single[1]
+        question = data_single[2]
+        answer = data_single[3]
+        start_pos = data_single[4]
         
+        
+
         ### END YOUR CODE
 
         sample: Dict[str, Any] = {
@@ -118,6 +164,75 @@ def squad_features(
     token_type_ids: List[int] = None
     start_token_pos: int = None
     end_token_pos: int = None
+
+
+    token_question = tokenizer.tokenize(question)
+    #token_context = tokenizer.tokenize(context)
+    
+    tokens = ["[CLS]"] + token_question + ["[SEP]"]
+    
+    token_type_ids = [0] * len(tokens)
+    
+    #set_trace()
+
+    # Answer available
+    if start_char_pos is not None:
+        if _is_whitespace(context[start_char_pos + len(answer)]):
+            #front_context = []
+            #token_answer = tokenizer.tokenize(answer)
+            back_context = tokenizer.tokenize(context[start_char_pos + len(answer):])
+        
+        # tokenize with ## if next chr of answer is not space
+        else:
+            #back_context_ = "##" + context[start_char_pos + len(answer)]
+            back_context = tokenizer.tokenize(context[start_char_pos + len(answer):])
+            back_context[0] = "##" + back_context[0]
+
+        
+        if start_char_pos == 0:            
+            front_context = []
+            token_answer = tokenizer.tokenize(answer)
+        
+        else:
+            if _is_whitespace(context[start_char_pos-1]):
+                front_context = tokenizer.tokenize(context[:start_char_pos])
+                token_answer = tokenizer.tokenize(answer)
+
+            # if previous chr of answer is not space
+            else:
+                
+                front_context = tokenizer.tokenize(context[:start_char_pos])
+                #answer_ = "##" + answer
+                token_answer = tokenizer.tokenize(answer)
+                token_answer[0] = "##" + token_answer[0]     
+
+        start_token_pos = len(tokens) + len(front_context)
+        end_token_pos = start_token_pos + len(token_answer) - 1
+
+        token_context = front_context + token_answer + back_context
+        #set_trace() 
+        token_type_ids = token_type_ids + [1] * (len(token_context) + 1)
+
+        tokens = tokens + token_context + ["[SEP]"]
+        
+        input_ids = tokenizer.convert_tokens_to_ids(tokens)
+
+
+    # No answer case
+    else:
+        token_context = tokenizer.tokenize(context)
+        tokens = tokens + token_context + ["[SEP]"]
+        token_type_ids = token_type_ids + [1] * (len(token_context)+1)
+        input_ids = tokenizer.convert_tokens_to_ids(tokens)
+        start_token_pos = None
+        end_token_pos = None
+            
+        #token_answer = tokenizer.tokenize(answer)       
+        #if len(token_answer) > 1:
+           
+
+
+
 
     ### END YOUR CODE
 
@@ -239,6 +354,7 @@ def test_squad_feature_extractor(dataset):
     answer = 'in the context'
     start_pos = context.find(answer)
     input_ids, token_type_ids, start_pos, end_pos = squad_features(context, question, answer, start_pos, tokenizer)
+    
 
     assert tokenizer.convert_ids_to_tokens(input_ids) == \
         ['[CLS]', 'where', 'are', 'the', 'answer', 'words', '?', '[SEP]', \
@@ -263,6 +379,8 @@ def test_squad_feature_extractor(dataset):
     start_pos = context.find(answer)
     input_ids, token_type_ids, start_pos, end_pos = squad_features(context, question, answer, start_pos, tokenizer)
     
+    ###########
+    #set_trace()
     assert tokenizer.convert_ids_to_tokens(input_ids) == \
         ['[CLS]', 'what', 'should', 'the', 'answer', 'consist', 'of', '[SEP]',
          'sometimes', ',', 'the', 'answer', 'could', 'be', 'sub', '##word', '##s',

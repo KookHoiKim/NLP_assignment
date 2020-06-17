@@ -177,16 +177,19 @@ def squad_features(
 
     # Answer available
     if start_char_pos is not None:
-        if _is_whitespace(context[start_char_pos + len(answer)]):
-            #front_context = []
-            #token_answer = tokenizer.tokenize(answer)
-            back_context = tokenizer.tokenize(context[start_char_pos + len(answer):])
+
+        token_answer = tokenizer.tokenize(answer)
+        back_context_ = tokenizer.tokenize(context[start_char_pos:])
         
-        # tokenize with ## if next chr of answer is not space
+        if _is_whitespace(context[start_char_pos + len(answer)]) is False:
+            if back_context_[len(token_answer)-1] is not token_answer[-1]:
+                back_context = tokenizer.tokenize(context[start_char_pos + len(answer):])
+                back_context[0] = "##" + back_context[0]
+            else:
+                back_context = back_context_[len(token_answer):]
+
         else:
-            #back_context_ = "##" + context[start_char_pos + len(answer)]
-            back_context = tokenizer.tokenize(context[start_char_pos + len(answer):])
-            back_context[0] = "##" + back_context[0]
+            back_context = back_context_[len(token_answer):]
 
         
         if start_char_pos == 0:            
@@ -196,27 +199,23 @@ def squad_features(
         else:
             if _is_whitespace(context[start_char_pos-1]):
                 front_context = tokenizer.tokenize(context[:start_char_pos])
-                token_answer = tokenizer.tokenize(answer)
 
             # if previous chr of answer is not space
             else:
                 
                 front_context = tokenizer.tokenize(context[:start_char_pos])
-                #answer_ = "##" + answer
-                token_answer = tokenizer.tokenize(answer)
                 token_answer[0] = "##" + token_answer[0]     
+                
 
         start_token_pos = len(tokens) + len(front_context)
         end_token_pos = start_token_pos + len(token_answer) - 1
 
         token_context = front_context + token_answer + back_context
-        #set_trace() 
         token_type_ids = token_type_ids + [1] * (len(token_context) + 1)
 
         tokens = tokens + token_context + ["[SEP]"]
         
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
-
 
     # No answer case
     else:

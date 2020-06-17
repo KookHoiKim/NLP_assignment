@@ -48,6 +48,7 @@ def dot_scaled_attention(
     assert padding_mask.shape == query.shape[:2]
     query_shape = query.shape
     _, _, d_k = query_shape
+
     # All vlues in last dimension (d_k dimension) are zeros for <PAD> location
     assert (padding_mask == (query == 0.).all(-1)).all()
     assert (padding_mask == (key == 0.).all(-1)).all()
@@ -55,8 +56,11 @@ def dot_scaled_attention(
 
     ### YOUR CODE HERE (~4 lines)
     scores = torch.bmm(query.permute(1, 0, 2), key.permute(1, 2, 0)) / math.sqrt(d_k)
+    #pdb.set_trace() 
     if padding_mask is not None:
+        #scores = scores.masked_fill(padding_mask.T.unsqueeze(1).expand(scores.shape) == True, float('-inf'))
         scores[padding_mask.T.unsqueeze(1).expand(scores.shape)] = float('-inf')
+    #p_attn = F.softmax(scores, dim=-1)
     p_attn = scores.softmax(-1)
     attention = torch.bmm(p_attn, value.permute(1, 0, 2)).permute(1, 0, 2)
 
@@ -132,23 +136,27 @@ class MultiHeadAttention(nn.Module):
         #pdb.set_trace()
         ### YOUR CODE HERE (~6 lines)
         attention: torch.Tensor = None
+        pdb.set_trace() 
+        #value = self.V_linear(value.transpose(1, 0)).transpose(1, 0).view(seq_length, batch_size*self.n_head, self.d_k)
+        value = self.V_linear(value.transpose(1, 0)).transpose(1, 0)
+        #key = self.K_linear(key.transpose(1, 0)).transpose(1, 0).view(seq_length, batch_size*self.n_head, self.d_k)
+        key = self.K_linear(key.transpose(1, 0)).transpose(1, 0)
+        #query = self.Q_linear(query.transpose(1, 0)).transpose(1, 0).view(seq_length, batch_size*self.n_head, self.d_k)
+        query = self.Q_linear(query.transpose(1, 0)).transpose(1, 0)
 
-        
-        value = self.V_linear(value).view(seq_length, batch_size, self.n_head, self.d_k).transpose(1, 2)
-        key = self.K_linear(key).view(seq_length, batch_size, self.n_head, self.d_k).transpose(1, 2)
-        query = self.Q_linear(query).view(seq_length, batch_size, self.n_head, self.d_k).transpose(1, 2)
          
-        
-        attention = dot_scaled_attention(query.reshape(seq_length, batch_size * self.n_head, self.d_k), 
-                                         key.reshape(seq_length, batch_size * self.n_head, self.d_k), 
-                                         value.reshape(seq_length, batch_size * self.n_head, self.d_k), 
-                                         padding_mask.repeat(1, self.n_head)).view(seq_length, self.n_head, batch_size, self.d_k).transpose(1, 2)
+        #attention = []
+        #for i in range(self.n_head):
+        #    attention.append(dot_scaled_attention(query[:, :, i, :].squeeze(), key[:, :, i, :].squeeze(), key[:, :, i, :].squeeze(), padding_mask))
 
-        attention = self.O_linear(attention.reshape(seq_length, batch_size, -1))
+        pdb.set_trace()
+        #attention = torch.stack(attention, -1).view(seq_length, batch_size, self.n_head*self.d_k)
+        attention = dot_scaled_attention(query, key, value, padding_mask)
+        attention = self.O_linear(attention.transpose(1, 0)).transpose(1, 0)
 
 
-        
-        #END YOUR CODE
+
+        ### END YOUR CODE
         assert attention.shape == input_shape
         return attention
 
@@ -217,13 +225,15 @@ class TransformerEncoderBlock(nn.Module):
 
         ### YOUR CODE HERE (~5 lines)
         output: torch.Tensor = None
+        
         attention = self.attention(x, x, x, padding_mask)
-        attention = self.dropout1(attention)
-        out = self.norm1(attention + x)
+        attention = self.norm1(attention)
+        out = x + self.dropout1(attention)
+        
+        output = self.output(out)
+        output = out + self.dropout2(self.norm2(output))
 
-        output = self.dropout2(self.output(out))
-        output = self.norm2(output + out)
-
+        #pdb.set_trace()
 
         ### END YOUR CODE
 
@@ -393,8 +403,6 @@ def test_dot_scaled_attention():
 
     print("All 2 tests passed!")
 
-
-'''
 def test_multi_head_attention():
     print("======Multi-Head Attention Test Case======")
     sequence_length = 10
@@ -431,76 +439,7 @@ def test_multi_head_attention():
     print("The second test passed!")
 
     print("All 2 tests passed!")
-'''
 
-def test_multi_head_attention():
-    print("======Multi-Head Attention Test Case======")
-    sequence_length = 10
-    batch_size = 8
-    hidden_dim = 6
-    n_head = 3
-    
-    padding_mask = []
-    for _ in range(0, batch_size):
-        padding_length = randint(0, sequence_length // 2)
-        padding_mask.append([False] * (sequence_length - padding_length) + [True] * padding_length)
-    padding_mask = torch.Tensor(padding_mask).to(torch.bool).T
-    x = torch.normal(0, 1, [sequence_length, batch_size, hidden_dim], requires_grad=True)
-    x.data[padding_mask, :] = 0.
-    
-    layer = MultiHeadAttention(hidden_dim=hidden_dim, n_head=n_head)
-    attention = layer(value=x, key=x, query=x, padding_mask=padding_mask)
-    
-    # the first test
-    expected_attn = torch.Tensor([[ 0.05570966, -0.32757416, -0.23760433],
-        [ 0.06560279, -0.27974704, -0.24361116],
-        [ 0.05408835,  0.06359858, -0.10527476]])
-    assert attention[:3, :3, 0].allclose(expected_attn, atol=1e-7), \
-            "Your attention does not match the expected result"
-    print("The first test passed!")
-            
-    # the second test
-    (attention ** 2).sum().backward()
-    expected_grad = torch.Tensor([[-0.12895486,  0.18081068,  0.29362375],
-                [-0.17206295,  0.14023274,  0.30686125],
-                [-0.14073643,  0.21830107,  0.28271273]])
-    assert x.grad[:3, :3, 0].allclose(expected_grad, atol=1e-7), \
-                    "Your gradient does not match the expected result"
-    print("The second test passed!")
-                    
-    print("All 2 tests passed!")
-
-
-
-def test_transformer_encoder_block():
-    print("======Transformer Encoder Block Test Case======")
-    sequence_length = 10
-    batch_size = 8
-    hidden_dim = 6
-    n_head = 3
-    feed_forward_dim = 12
-
-    padding_mask = []
-    for _ in range(0, batch_size):
-        padding_length = randint(0, sequence_length // 2)
-        padding_mask.append([False] * (sequence_length - padding_length) + [True] * padding_length)
-    padding_mask = torch.Tensor(padding_mask).to(torch.bool).T
-    x = torch.normal(0, 1, [sequence_length, batch_size, hidden_dim], requires_grad=True)
-    x.data[padding_mask, :] = 0.
-
-    layer = TransformerEncoderBlock(hidden_dim=hidden_dim, n_head=n_head, feed_forward_dim=feed_forward_dim)
-    encoded = layer(x, padding_mask=padding_mask)
-
-    # the test case
-    expected_value = torch.Tensor([[-0.13002314,  1.75873685,  1.92743111],
-        [-1.39377058, -0.64637190, -0.43793410],
-        [ 0.87437361, -0.03357963, -0.33361447]])
-    assert encoded[:3, :3, 0].allclose(expected_value, atol=1e-7), \
-            "Your encoded value does not match the expected result"
-    print("The test case passed!")
-
-
-'''
 def test_transformer_encoder_block():
     print("======Transformer Encoder Block Test Case======")
     sequence_length = 10
@@ -527,10 +466,6 @@ def test_transformer_encoder_block():
     assert encoded[:3, :3, 0].allclose(expected_value, atol=1e-7), \
         "Your encoded value does not match the expected result"
     print("The test case passed!")
-
-
-
-'''
 
 if __name__ == "__main__":
     torch.set_printoptions(precision=8)

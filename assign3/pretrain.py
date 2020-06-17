@@ -7,7 +7,8 @@ import torch
 from torch.utils.data import IterableDataset
 
 ### You can import any Python standard libraries or pyTorch sub directories here
-
+import pdb
+import copy
 ### END YOUR LIBRARIES
 
 import utils
@@ -61,13 +62,81 @@ class PretrainDataset(IterableDataset):
 
         # The number of tokens
         TOKEN_NUM = self.token_num
-
+        #pdb.set_trace()
         while True:
             ### YOUR CODE HERE (~ 40 lines)
             source_sentences: List[int] = None
             MLM_sentences: List[int] = None
             MLM_mask: List[bool] = None
             NSP_label: bool = None
+            
+            source = []
+            source_sentences = [CLS]
+            MLM_sentences = []
+            MLM_mask = []
+            
+            epoch = random.randint(0, len(self.dataset)-1)
+            if len(self.dataset[epoch]) == 2:
+                NSP_label = True
+                len_a = len(self.dataset[epoch][0])
+                
+                for t in self.dataset[epoch]:
+                    source_sentences.extend(t + [SEP])
+                    source.extend(t)
+            else:
+                source_senteces.extend(self.dataset[epoch] + [SEP])
+                source.extend(self.dataset[epoch])
+            #else:
+            #    source_sentences = self.dataset[epoch][0]
+            
+            
+
+            MLM_sentences = copy.deepcopy(source)
+            MLM_mask = [False] * len(MLM_sentences)
+
+            src_idx = set(range(len(source)))
+            prob_mask = 0.15
+            num_mask = int(len(source_sentences) * prob_mask)
+            
+            idx_mask = random.sample(src_idx, num_mask)
+            idx_mask_msk = random.sample(idx_mask, int(num_mask * 0.8))
+            idx_mask_word = random.sample(set(idx_mask) - set(idx_mask_msk), int(num_mask * 0.1))
+            idx_mask_not = list(set(idx_mask) - set(idx_mask_msk) - set(idx_mask_word))
+            
+            '''
+            for idx in idx_mask:
+
+                if random.random() <= 0.8:
+                    MLM_sentences[idx] = MSK
+                    MLM_mask[idx] = True
+                else:
+                    if random.random() <= 0.5:
+                        MLM_sentences[idx] = random.randint(5, len(source_sentences))
+                        MLM_mask[idx] = True
+                    else:
+                        MLM_mask[idx] = True
+            '''
+            idx_not_mask = src_idx - set(idx_mask)
+            
+
+            for idx in idx_mask_msk:
+                MLM_sentences[idx] = MSK
+                MLM_mask[idx] = True
+            for idx in idx_mask_word:
+                MLM_sentences[idx] = source[random.sample(idx_not_mask, 1)[0]]
+                MLM_mask[idx] = True
+            for idx in idx_mask_not:
+                MLM_mask[idx] = True
+
+
+            if NSP_label:
+                MLM_sentences = [CLS] + MLM_sentences[:len_a] + [SEP] + MLM_sentences[len_a:] + [SEP]
+                MLM_mask = [False] + MLM_mask[:len_a] + [False] + MLM_mask[len_a:] + [False]
+            else:
+                MLM_sentences = [CLS] + MLM_sentences + [SEP]
+                MLM_mask = [False] + MLM_mask + [False]
+
+            #epoch += 1 
 
             ### END YOUR CODE            
 
@@ -242,6 +311,7 @@ def test_MLM_and_NSP_dataset():
                 "The number of the masked tokens should be 15%% of the total tokens."
 
         # Sixth test
+        pdb.set_trace()
         assert .795 < sum(word == MSK for word in mlm) / sum(mask) < .805, \
                 "80%% of the masked tokens should be converted to MSK tokens"
         

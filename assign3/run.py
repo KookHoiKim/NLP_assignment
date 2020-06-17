@@ -6,7 +6,7 @@ import random
 import torch
 
 ### You can import any Python standard libraries or pyTorch sub directories here
-
+import pdb
 ### END YOUR LIBRARIES
 
 import utils
@@ -116,7 +116,6 @@ def train_model():
     model = IMDBmodel(train_dataset.token_num)
 
     model_name = 'imdb'
-
     # You can choose whether to enable fine-tuning
     fine_tuning = True
 

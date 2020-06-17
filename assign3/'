@@ -3,8 +3,9 @@ from itertools import chain
 
 ### You can import any Python standard libraries here.
 ### Do not import external library such as numpy, torchtext, etc.
-import re
-from collections import Counter, defaultdict
+import re, collections
+from collections import Counter
+import numpy as np
 import pdb
 ### END YOUR LIBRARIES
 
@@ -41,28 +42,36 @@ def build_bpe(
     ### YOUR CODE HERE (~22 lines)
     idx2word: List[str] = SPECIAL
     
+    #vocab_ = dict()
+    #vocab_test = dict()
+    #vocab = dict()
+    #for word in range()
+    #pdb.set_trace() 
     cnt_word = Counter(corpus)
     vocab = {' '.join(word + WORD_END): cnt for word, cnt in cnt_word.items()}
+    #vocab_test = cnt_word.keys()
     vocab_test = {''.join(word + WORD_END): cnt for word, cnt in cnt_word.items()}
 
     idx2word_tmp = []
     while True:
         for key in vocab.keys():
             idx2word_tmp.extend(key.split())
-        idx2word_set = set(idx2word_tmp)
+        idx2word_ = set(idx2word_tmp)
         
-        if len(idx2word_set) >= max_vocab_size - 5:
-            idx2word.extend(sorted(list(idx2word_set), key=len, reverse=True))
+        if len(idx2word_) >= max_vocab_size - 5:
+            idx2word_w = list(idx2word_)
+            idx2word.extend(sorted(idx2word_w, key=len, reverse=True))
             break
         
-        pairs = defaultdict(int)
+        pairs = collections.defaultdict(int)
         for word, freq in vocab.items():
             symbols = word.split()
             for i in range(len(symbols)-1):
                 pairs[symbols[i], symbols[i+1]] += freq
 
         if vocab == vocab_test:
-            idx2word.extend(sorted(list(idx2word_set), key=len, reverse=True))
+            idx2word_w = list(idx2word_)
+            idx2word.extend(sorted(idx2word_w, key=len, reverse=True))
             break
         else:
             best = max(pairs, key=pairs.get)
